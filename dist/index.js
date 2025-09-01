@@ -98,14 +98,17 @@
         this.boundEventListener[css].push({ event, handler: boundHandler });
       }
       attachListener() {
-        for (let css in option?.eventListener) {
-          const eventTargets = this.$$(css);
-          eventTargets.forEach((target) => {
-            if (!option?.eventListener?.[css]) return;
-            for (let handle of option.eventListener[css]) {
-              this.registerEventHandler(target, css, handle);
-            }
-          });
+        for (let selectors in option?.eventListener) {
+          for (const selector of selectors.split(",")) {
+            const css = selector.trim();
+            const eventTargets = this.$$(selector.trim());
+            eventTargets.forEach((target) => {
+              if (!option?.eventListener?.[selectors]) return;
+              for (let handle of option.eventListener[selectors]) {
+                this.registerEventHandler(target, css, handle);
+              }
+            });
+          }
         }
       }
       removeListener() {
@@ -305,6 +308,23 @@
       audio.play();
     }
   };
+  var openHandle = (event, open) => ({
+    event,
+    handler(ev) {
+      this.state.open = open ? "inline" : "none";
+    }
+  });
+  var playHandle = (event, play) => ({
+    event,
+    handler(ev) {
+      console.log(event);
+      const newState = play ? "running" : "paused";
+      if (this.state.playing == newState) return;
+      this.state.playing = newState;
+      const audio = this.$("#audio");
+      play ? audio.play() : audio.pause();
+    }
+  });
   Factory("hi-fi", html, {
     state() {
       return {
@@ -331,37 +351,16 @@
     },
     eventListener: {
       ".container": [
-        {
-          event: "mouseenter",
-          handler() {
-            this.state.open = "inline";
-          }
-        },
-        {
-          event: "mouseleave",
-          handler() {
-            this.state.open = "none";
-          }
-        }
+        openHandle("mouseenter", true),
+        openHandle("mouseleave", false)
       ],
       ".record": [
-        {
-          event: "mousedown",
-          handler() {
-            this.state.playing = "paused";
-            this.$("#audio").pause();
-          }
-        },
-        {
-          event: "mouseup",
-          handler() {
-            this.state.playing = "running";
-            this.$("#audio").play();
-          }
-        }
+        playHandle("mousedown", false),
+        playHandle("mouseup", true),
+        playHandle("touchstart", false),
+        playHandle("touchend", true)
       ],
-      "#speed-range": [speedHandle],
-      "#speed-count": [speedHandle],
+      "#speed-range,#speed-count": [speedHandle],
       ".close": [
         {
           event: "click",

@@ -95,14 +95,19 @@ export function Factory<T extends object>(
     }
 
     attachListener() {
-      for (let css in option?.eventListener) {
-        const eventTargets = this.$$(css);
-        eventTargets.forEach((target) => {
-          if (!option?.eventListener?.[css]) return;
-          for (let handle of option.eventListener[css]) {
-            this.registerEventHandler(target, css, handle);
-          }
-        });
+      for (let selectors in option?.eventListener) {
+        /* comma split user provided selectors */
+        for (const selector of selectors.split(",")) {
+          const css = selector.trim();
+          const eventTargets = this.$$(selector.trim());
+          /* register each target individualy */
+          eventTargets.forEach((target) => {
+            if (!option?.eventListener?.[selectors]) return;
+            for (let handle of option.eventListener[selectors]) {
+              this.registerEventHandler(target, css, handle);
+            }
+          });
+        }
       }
     }
     removeListener() {

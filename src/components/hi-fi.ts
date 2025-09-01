@@ -103,6 +103,25 @@ const speedHandle = {
   },
 };
 
+const openHandle = (event: string, open: boolean) => ({
+  event,
+  handler(this: BaseComponent<StateType>, ev: Event) {
+    this.state.open = open ? "inline" : "none";
+  },
+});
+
+const playHandle = (event: string, play: boolean) => ({
+  event,
+  handler(this: BaseComponent<StateType>, ev: Event) {
+    console.log(event)
+    const newState = play ? "running" : "paused"
+    if(this.state.playing == newState)return
+    this.state.playing = newState;
+    const audio = this.$("#audio") as HTMLAudioElement;
+    play ? audio.play() : audio.pause();
+  },
+});
+
 Factory<StateType>("hi-fi", html, {
   state() {
     return {
@@ -129,37 +148,16 @@ Factory<StateType>("hi-fi", html, {
   },
   eventListener: {
     ".container": [
-      {
-        event: "mouseenter",
-        handler() {
-          this.state.open = "inline";
-        },
-      },
-      {
-        event: "mouseleave",
-        handler() {
-          this.state.open = "none";
-        },
-      },
+      openHandle("mouseenter", true),
+      openHandle("mouseleave", false),
     ],
     ".record": [
-      {
-        event: "mousedown",
-        handler() {
-          this.state.playing = "paused";
-          (this.$("#audio") as HTMLAudioElement).pause();
-        },
-      },
-      {
-        event: "mouseup",
-        handler() {
-          this.state.playing = "running";
-          (this.$("#audio") as HTMLAudioElement).play();
-        },
-      },
+      playHandle("mousedown", false),
+      playHandle("mouseup", true),
+      playHandle("touchstart", false),
+      playHandle("touchend", true),
     ],
-    "#speed-range": [speedHandle],
-    "#speed-count": [speedHandle],
+    "#speed-range,#speed-count": [speedHandle],
     ".close": [
       {
         event: "click",

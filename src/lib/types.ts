@@ -8,6 +8,7 @@ export type EventListernerRecord<T extends object> = Record<
   EventHandle<T>[]
 >;
 
+
 export type DynamicFieldsRecord<T> =
   | Record<keyof T, { id: string; raw: string }[]>
   | {};
