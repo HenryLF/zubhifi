@@ -1,4 +1,5 @@
 import { Factory } from "../lib/Factory";
+import { HifiComponent, HifiValue } from "./hi-fi";
 
 const graphHtml = /*html */ `
 <style>
@@ -82,10 +83,10 @@ Factory("graph-bar", barHtml, {
 function getSpectralData(el: Element) {
   const hifis = Array.from(
     el.parentElement?.querySelectorAll("hi-fi") ?? []
-  ) as HTMLInputElement[];
-  return hifis.reduce((acc: Record<number, number>, hifi: HTMLInputElement) => {
-    const roundedFreq = Math.round(444 * parseFloat(hifi.value));
-    const freq = roundedFreq - (roundedFreq % 10);
+  ) as HifiComponent[];
+  return hifis.reduce((acc: Record<number, number>, hifi: HifiComponent) => {
+    const { freq , playing } = hifi.value;
+    if (!playing) return acc
     if (!acc[freq]) {
       acc[freq] = 0;
     }

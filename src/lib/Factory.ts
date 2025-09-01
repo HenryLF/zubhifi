@@ -28,22 +28,16 @@ export function Factory<T extends object>(
 
     private dynamicFields: DynamicFieldsRecord<T> = {};
     private boundEventListener: EventListernerRecord<T> = {};
+    private boundValueUpdater() {}
     constructor() {
       super();
-      /* set initialize value */
-      if (typeof option?.value === "function") {
-        this._value = option.value.bind(this)();
-      } else {
-        this._value = option?.value ?? null;
-      }
-
       this.rawHTML = temp;
       if (option?.noShadow) {
         this.root = this;
       } else {
         this.root = this.attachShadow({ mode: "closed" });
       }
-
+      /* set initial state */
       if (option?.state) {
         let initialState: T;
         if (typeof option.state === "function") {
@@ -55,6 +49,11 @@ export function Factory<T extends object>(
       } else {
         this.state = {} as T;
       }
+      /* set initialize value */
+      if (option?.value) {
+        this.boundValueUpdater = option?.value?.bind(this);
+      }
+      this._value = this.boundValueUpdater();
     }
     /* Public utilities */
     $(css: string) {
@@ -136,6 +135,10 @@ export function Factory<T extends object>(
           if (target[property] == value) return true;
           target[property] = value;
           this.updateDynamicField(property);
+          const newValue = this.boundValueUpdater();
+          if (this.value != newValue) {
+            this.value = this.boundValueUpdater();
+          }
           return true;
         },
       };
@@ -148,13 +151,11 @@ export function Factory<T extends object>(
       if (!toUpdate) return;
       for (let { id, raw } of toUpdate) {
         /*fetch element by internal id*/
-        const element = this.$(`[internal-id=${id}]`);
+        let element = this.$(`[internal-id=${id}]`);
         if (!element) continue;
         /*rerender field*/
         element.outerHTML = renderTemplate(raw, this.state);
 
-        /*reimport src field*/
-        importDataSrc(element);
 
         /*reattach lost event handlers */
         for (let css in this.boundEventListener) {
@@ -177,6 +178,8 @@ export function Factory<T extends object>(
           });
         }
       }
+      option?.onRender?.bind(this)();
+
     }
     initialRender() {
       /* Import template */
@@ -215,7 +218,6 @@ export function Factory<T extends object>(
       });
       /*render full root*/
       this.root.innerHTML = renderTemplate(this.root.innerHTML, this.state);
-      importDataSrc(this.root);
       this.attachListener();
     }
 
