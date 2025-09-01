@@ -1,225 +1,14 @@
-(() => {
-  // src/lib/utils.ts
-  function getId() {
-    const now = window.performance.now();
-    const timeSeed = [0, 1].map(
-      (_, id) => String.fromCharCode(
-        Math.floor(now % Math.pow(26, id + 1) / Math.pow(26, id)) + 65
-      )
-    );
-    return `${timeSeed.join("")}${Math.floor(Math.random() * 1e3).toString().padStart(3, "0")}`;
-  }
-  function importDataSrc(target) {
-    target.querySelectorAll("[data-src]").forEach((element) => {
-      const src = element.getAttribute("data-src");
-      element.setAttribute("src", src);
-    });
-  }
-  function renderTemplate(rawHTML, object) {
-    return rawHTML.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-      return object[key]?.toString() || "";
-    });
-  }
-
-  // src/lib/Factory.ts
-  function Factory(name, temp, option) {
-    class Component extends HTMLElement {
-      rawHTML;
-      root;
-      state;
-      /*value field for input-like behavior */
-      _value;
-      get value() {
-        return this._value;
-      }
-      set value(newValue) {
-        if (newValue == this.value) return;
-        this._value = newValue;
-        this.dispatchEvent(new Event("input"));
-      }
-      dynamicFields = {};
-      boundEventListener = {};
-      constructor() {
-        super();
-        if (typeof option?.value === "function") {
-          this._value = option.value.bind(this)();
-        } else {
-          this._value = option?.value ?? null;
-        }
-        this.rawHTML = temp;
-        if (option?.noShadow) {
-          this.root = this;
-        } else {
-          this.root = this.attachShadow({ mode: "closed" });
-        }
-        if (option?.state) {
-          let initialState;
-          if (typeof option.state === "function") {
-            initialState = option.state.bind(this)();
-          } else {
-            initialState = option.state;
-          }
-          this.state = this.createReactiveState(initialState);
-        } else {
-          this.state = {};
-        }
-      }
-      /* Public utilities */
-      $(css) {
-        return this.root.querySelector(css);
-      }
-      $$(css) {
-        return this.root.querySelectorAll(css);
-      }
-      $on(css, ...handles) {
-        const element = this.$(css);
-        if (!element) return;
-        for (let handle of handles) {
-          this.registerEventHandler(element, css, handle);
-        }
-      }
-      $$on(css, ...handles) {
-        this.$$(css).forEach((el) => {
-          for (let handle of handles) {
-            this.registerEventHandler(el, css, handle);
-          }
-        });
-      }
-      destroy() {
-        this.parentElement?.removeChild(this);
-      }
-      /* shadowed methoded */
-      registerEventHandler(el, css, { handler, event, option: option2 }) {
-        const boundHandler = handler.bind(this);
-        el.addEventListener(event, boundHandler, option2);
-        if (!this.boundEventListener[css]) {
-          this.boundEventListener[css] = [];
-        }
-        this.boundEventListener[css].push({ event, handler: boundHandler });
-      }
-      attachListener() {
-        for (let selectors in option?.eventListener) {
-          for (const selector of selectors.split(",")) {
-            const css = selector.trim();
-            const eventTargets = this.$$(selector.trim());
-            eventTargets.forEach((target) => {
-              if (!option?.eventListener?.[selectors]) return;
-              for (let handle of option.eventListener[selectors]) {
-                this.registerEventHandler(target, css, handle);
-              }
-            });
-          }
-        }
-      }
-      removeListener() {
-        for (let css in this.boundEventListener) {
-          const eventTargets = this.$$(css);
-          eventTargets.forEach((target) => {
-            for (let { event, handler } of this.boundEventListener[css]) {
-              target.removeEventListener(event, handler);
-            }
-          });
-        }
-      }
-      createReactiveState(initialState) {
-        const handler = {
-          get: (target, property) => {
-            if (typeof target[property] === "object" && target[property] !== null) {
-              return new Proxy(target[property], handler);
-            }
-            return target[property];
-          },
-          set: (target, property, value) => {
-            if (target[property] == value) return true;
-            target[property] = value;
-            this.updateDynamicField(property);
-            return true;
-          }
-        };
-        return new Proxy(initialState, handler);
-      }
-      updateDynamicField(property) {
-        const toUpdate = this.dynamicFields[property];
-        if (!toUpdate) return;
-        for (let { id, raw } of toUpdate) {
-          const element = this.$(`[internal-id=${id}]`);
-          if (!element) continue;
-          element.outerHTML = renderTemplate(raw, this.state);
-          importDataSrc(element);
-          for (let css in this.boundEventListener) {
-            const eventTargets = [
-              ...this.$$(`[internal-id=${id}] ${css}`)
-            ];
-            if (element.matches(css)) {
-              eventTargets.push(this.$(`[internal-id=${id}]`));
-            }
-            eventTargets.forEach((target) => {
-              this.boundEventListener[css].forEach(
-                ({ event, handler, option: option2 }) => {
-                  target.addEventListener(event, handler, option2);
-                }
-              );
-            });
-          }
-        }
-      }
-      initialRender() {
-        const rawTemp = document.createElement("template");
-        rawTemp.innerHTML = this.rawHTML;
-        if (option?.wrapperElement == "none") {
-          this.root.appendChild(rawTemp.content);
-        } else {
-          const wrapper = document.createElement(
-            option?.wrapperElement ?? "main"
-          );
-          wrapper.appendChild(rawTemp.content);
-          this.root.appendChild(wrapper);
-        }
-        this.$$("[re-render]").forEach((el) => {
-          const id = getId();
-          el.setAttribute("internal-id", id);
-        });
-        this.$$("[re-render]").forEach((el) => {
-          const dataAttr = el.getAttribute("re-render")?.split(",").map((e) => e.trim()) ?? [];
-          const id = el.getAttribute("internal-id");
-          for (let attr of dataAttr) {
-            if (!this.dynamicFields[attr]) {
-              this.dynamicFields[attr] = [];
-            }
-            this.dynamicFields[attr].push({ id, raw: el.outerHTML });
-          }
-        });
-        this.root.innerHTML = renderTemplate(this.root.innerHTML, this.state);
-        importDataSrc(this.root);
-        this.attachListener();
-      }
-      connectedCallback() {
-        this.initialRender();
-        option?.onMount?.bind(this)();
-      }
-      disconnectedCallback() {
-        option?.onUnMount?.bind(this)();
-        this.removeListener();
-      }
-      connectedMoveCallback() {
-        console.log("Custom move-handling logic here.");
-      }
-      attributeChangedCallback(name2, oldValue, newValue) {
-        option?.onAttributeChange?.bind(this)(name2, oldValue, newValue);
-      }
-    }
-    customElements.define(name, Component);
-  }
-
-  // src/components/hi-fi.ts
-  var html = (
-    /*html*/
-    `
-
+(()=>{function g(){let t=window.performance.now();return`${[0,1].map((n,a)=>String.fromCharCode(Math.floor(t%Math.pow(26,a+1)/Math.pow(26,a))+65)).join("")}${Math.floor(Math.random()*1e3).toString().padStart(3,"0")}`}function p(t){t.querySelectorAll("[data-src]").forEach(s=>{let n=s.getAttribute("data-src");s.setAttribute("src",n)})}function m(t,s){return t.replace(/\{\{(\w+)\}\}/g,(n,a)=>s[a]?.toString()||"")}function c(t,s,n){class a extends HTMLElement{rawHTML;root;state;_value;get value(){return this._value}set value(e){e!=this.value&&(this._value=e,this.dispatchEvent(new Event("input")))}dynamicFields={};boundEventListener={};constructor(){if(super(),typeof n?.value=="function"?this._value=n.value.bind(this)():this._value=n?.value??null,this.rawHTML=s,n?.noShadow?this.root=this:this.root=this.attachShadow({mode:"closed"}),n?.state){let e;typeof n.state=="function"?e=n.state.bind(this)():e=n.state,this.state=this.createReactiveState(e)}else this.state={}}$(e){return this.root.querySelector(e)}$$(e){return this.root.querySelectorAll(e)}$on(e,...i){let r=this.$(e);if(r)for(let o of i)this.registerEventHandler(r,e,o)}$$on(e,...i){this.$$(e).forEach(r=>{for(let o of i)this.registerEventHandler(r,e,o)})}destroy(){this.parentElement?.removeChild(this)}registerEventHandler(e,i,{handler:r,event:o,option:l}){let d=r.bind(this);e.addEventListener(o,d,l),this.boundEventListener[i]||(this.boundEventListener[i]=[]),this.boundEventListener[i].push({event:o,handler:d})}attachListener(){for(let e in n?.eventListener)for(let i of e.split(",")){let r=i.trim();this.$$(i.trim()).forEach(l=>{if(n?.eventListener?.[e])for(let d of n.eventListener[e])this.registerEventHandler(l,r,d)})}}removeListener(){for(let e in this.boundEventListener)this.$$(e).forEach(r=>{for(let{event:o,handler:l}of this.boundEventListener[e])r.removeEventListener(o,l)})}createReactiveState(e){let i={get:(r,o)=>typeof r[o]=="object"&&r[o]!==null?new Proxy(r[o],i):r[o],set:(r,o,l)=>(r[o]==l||(r[o]=l,this.updateDynamicField(o)),!0)};return new Proxy(e,i)}updateDynamicField(e){let i=this.dynamicFields[e];if(i)for(let{id:r,raw:o}of i){let l=this.$(`[internal-id=${r}]`);if(l){l.outerHTML=m(o,this.state),p(l);for(let d in this.boundEventListener){let v=[...this.$$(`[internal-id=${r}] ${d}`)];l.matches(d)&&v.push(this.$(`[internal-id=${r}]`)),v.forEach(y=>{this.boundEventListener[d].forEach(({event:E,handler:w,option:L})=>{y.addEventListener(E,w,L)})})}}}}initialRender(){let e=document.createElement("template");if(e.innerHTML=this.rawHTML,n?.wrapperElement=="none")this.root.appendChild(e.content);else{let i=document.createElement(n?.wrapperElement??"main");i.appendChild(e.content),this.root.appendChild(i)}this.$$("[re-render]").forEach(i=>{let r=g();i.setAttribute("internal-id",r)}),this.$$("[re-render]").forEach(i=>{let r=i.getAttribute("re-render")?.split(",").map(l=>l.trim())??[],o=i.getAttribute("internal-id");for(let l of r)this.dynamicFields[l]||(this.dynamicFields[l]=[]),this.dynamicFields[l].push({id:o,raw:i.outerHTML})}),this.root.innerHTML=m(this.root.innerHTML,this.state),p(this.root),this.attachListener()}connectedCallback(){this.initialRender(),n?.onMount?.bind(this)()}disconnectedCallback(){n?.onUnMount?.bind(this)(),this.removeListener()}connectedMoveCallback(){console.log("Custom move-handling logic here.")}attributeChangedCallback(e,i,r){n?.onAttributeChange?.bind(this)(e,i,r)}}customElements.define(t,a)}var T=`
     <style>
+    :host{
+          --height : 100px;
+          --width : 100px ;
+          --background-color : white;
+          
+    }
     .container{
-        height : var(--height,50px) ;
-        width : var(--width,50px );
+        height : var(--height) ;
+        width : var(--width);
         position : relative;
     }
     .record,.gear,.disk,.modal{
@@ -252,6 +41,10 @@
     }
     .modal{
         position : absolute;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color :var(--background-color);
         top: 100%;
         left: 0px;
         border: 1px solid black;
@@ -271,7 +64,7 @@
         transform: scale(105%);
     }
     #speed-range,#speed-count{
-        width: 100%;
+        width: 90%;
     } 
     </style>
     <style re-render="playing,speed">
@@ -290,150 +83,42 @@
         <audio id="audio" loop=true data-src="{{src}}"></audio>
         <div class="modal" style="display: {{open}};" re-render="open">
             <input id="speed-range" min=".1" step=".1" max="4" re-render="speed" value={{speed}}  type="range">
-            <input id="speed-count" min=".1" step=".1" max="4" re-render="speed" value={{speed}} type="number">
+            <input id="speed-count" onkeyup="if (event.key === 'Enter') { this.click(); }" min=".1" step=".1" max="4" re-render="speed" value={{speed}} type="number">
         </div>
         <div class="close" style="display: {{open}};" re-render="open">X</div>
     <div>
-`
-  );
-  var speedHandle = {
-    event: "input",
-    handler(ev) {
-      const speed = parseFloat(ev.target.value);
-      this.state.speed = speed;
-      this.value = speed;
-      const audio = this.$("#audio");
-      audio.pause();
-      audio.playbackRate = this.state.speed;
-      audio.play();
-    }
-  };
-  var openHandle = (event, open) => ({
-    event,
-    handler(ev) {
-      this.state.open = open ? "inline" : "none";
-    }
-  });
-  var playHandle = (event, play) => ({
-    event,
-    handler(ev) {
-      console.log(event);
-      const newState = play ? "running" : "paused";
-      if (this.state.playing == newState) return;
-      this.state.playing = newState;
-      const audio = this.$("#audio");
-      play ? audio.play() : audio.pause();
-    }
-  });
-  Factory("hi-fi", html, {
-    state() {
-      return {
-        speed: parseFloat(this.getAttribute("speed") ?? "1"),
-        playing: "paused",
-        open: "none",
-        src: this.getAttribute("src") || "dial.mp3"
-      };
-    },
-    value() {
-      return parseFloat(this.getAttribute("speed") ?? "1");
-    },
-    onMount() {
-      window.addEventListener(
-        "click",
-        () => {
-          const audio = this.$("#audio");
-          audio.preservesPitch = false;
-          audio.play();
-          this.state.playing = "running";
-        },
-        { once: true }
-      );
-    },
-    eventListener: {
-      ".container": [
-        openHandle("mouseenter", true),
-        openHandle("mouseleave", false)
-      ],
-      ".record": [
-        playHandle("mousedown", false),
-        playHandle("mouseup", true),
-        playHandle("touchstart", false),
-        playHandle("touchend", true)
-      ],
-      "#speed-range,#speed-count": [speedHandle],
-      ".close": [
-        {
-          event: "click",
-          handler() {
-            this.destroy();
-          }
-        }
-      ]
-    }
-  });
-
-  // src/components/add-button.ts
-  var html2 = (
-    /*html*/
-    `
+`,f=t=>({event:t,handler(s){let n=parseFloat(s.target.value);this.state.speed=n,this.value=n;let a=this.$("#audio");a.pause(),a.playbackRate=this.state.speed,a.play()}}),b=(t,s)=>({event:t,handler(n){this.state.open=s?"flex":"none"}}),u=(t,s)=>({event:t,handler(){let n=s?"running":"paused";if(this.state.playing==n)return;this.state.playing=n;let a=this.$("#audio");s?a.play():a.pause()}});c("hi-fi",T,{state(){return{speed:parseFloat(this.getAttribute("speed")??"1"),playing:"paused",open:"none",src:this.getAttribute("src")||"dial.mp3"}},value(){return parseFloat(this.getAttribute("speed")??"1")},onMount(){window.addEventListener("click",()=>{let t=this.$("#audio");t.preservesPitch=!1,t.play(),this.state.playing="running"},{once:!0})},eventListener:{".container":[b("mouseenter",!0),b("mouseleave",!1)],".record":[u("mousedown",!1),u("mouseup",!0),u("touchstart",!1),u("touchend",!0)],"#speed-range":[f("mouseup")],"#speed-count":[f("blur"),f("click")],".close":[{event:"click",handler(){this.destroy()}}]}});var x=`
     <style>
+        :host{
+          --height : 200px;
+          --width : 100%;
+          flex-basis: 100%;
+        }
         main{
-            padding : 20px;
-            background-color: aqua;
-        }
+        height : var(--height);
+        width : var(--width );
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
     </style>
-    <button id="add" aria-roledescription="add hifi">Add</button>
-    <button id="clear" aria-roledescription="add hifi">Clear</button>
-    <div re-render="count">
-        Now {{count}} Hi-Fi.
+    <div>
+      <button id="add" aria-roledescription="add hifi">Add</button>
+      <button id="clear" aria-roledescription="add hifi">Clear</button>
     </div>
-`
-  );
-  Factory("add-button", html2, {
-    onMount() {
-      const callback = () => {
-        this.state.count = document.querySelectorAll("hi-fi").length;
-      };
-      const observer = new MutationObserver(callback);
-      observer.observe(this.parentElement ?? this, { childList: true });
-      callback();
-    },
-    state: {
-      count: 0
-    },
-    eventListener: {
-      "#add": [
-        {
-          event: "click",
-          handler() {
-            const hifiComponent = document.createElement("hi-fi");
-            hifiComponent.setAttribute("src", "dial.mp3");
-            hifiComponent.setAttribute("speed", `${Math.random() * 0.8 + 0.2}`);
-            this.parentElement?.appendChild(hifiComponent.cloneNode(true));
-          }
-        }
-      ],
-      "#clear": [
-        {
-          event: "click",
-          handler() {
-            const hifis = this.parentElement?.querySelectorAll("hi-fi");
-            console.log(hifis);
-            hifis?.forEach((hifi) => this.parentElement?.removeChild(hifi));
-          }
-        }
-      ]
-    }
-  });
-
-  // src/components/hifi-spectrum.ts
-  var graphHtml = (
-    /*html */
-    `
+      <p re-render="count">
+        Now {{count}} Hi-Fi.
+      </p>
+`;c("add-button",x,{onMount(){let t=()=>{this.state.count=document.querySelectorAll("hi-fi").length};new MutationObserver(t).observe(this.parentElement??this,{childList:!0}),t()},state:{count:0},eventListener:{"#add":[{event:"click",handler(){let t=document.createElement("hi-fi");t.setAttribute("src","dial.mp3"),t.setAttribute("speed",`${Math.random()*.8+.2}`),this.parentElement?.insertBefore(t.cloneNode(!0),this)}}],"#clear":[{event:"click",handler(){let t=this.parentElement?.querySelectorAll("hi-fi");console.log(t),t?.forEach(s=>this.parentElement?.removeChild(s))}}]}});var H=`
 <style>
   main{
+    display: flex;
+    flex-direction: column;
+    height: 100%;
   }
   .slot-container{
+    flex: 1;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -451,85 +136,34 @@
   </div>    
     <div class="graph">
     </div>
-`
-  );
-  var barHtml = (
-    /*html */
-    `
+`,M=`
     <style>
-      .bar{
+      .bar,.freq{
+        
         position:absolute;
+      }
+    .bar{
         width : 5%;
         --left: calc(100% * var(--ratio));
-        height:var(--height);
         left:var(--left);
+        height:var(--height);
         bottom : 0px;
         background-color: hsl(calc(var(--ratio)*360) , 80% , 50%);
     }
+    .bar:hover > *{
+      display: inline;
+
+    }
+    .freq{
+      display: none;
+      bottom: calc(var(--height));
+      text-align: center;
+      line-height: 12px;
+      width: 100%;
+    }
+
     </style>
-    <div class="bar" style="--ratio : calc({{freq}} /1800);--height : calc(10% * {{count}});" re-render="freq,count"></div>
-`
-  );
-  Factory("graph-bar", barHtml, {
-    noShadow: true,
-    state: {
-      freq: 1,
-      count: 1
-    },
-    onMount() {
-      this.state.freq = parseInt(this.getAttribute("freq") ?? "1");
-      this.state.count = parseInt(this.getAttribute("count") ?? "1");
-    },
-    onAttributeChange(name, _, val) {
-      switch (name) {
-        case "freq":
-        case "count":
-          this.state[name] = parseInt(val ?? "1");
-          break;
-        default:
-      }
-    }
-  });
-  function getSpectralData(el) {
-    const hifis = Array.from(
-      el.parentElement?.querySelectorAll("hi-fi") ?? []
-    );
-    return hifis.reduce((acc, hifi) => {
-      const roundedFreq = Math.round(444 * parseFloat(hifi.value));
-      const freq = roundedFreq - roundedFreq % 10;
-      if (!acc[freq]) {
-        acc[freq] = 0;
-      }
-      acc[freq] += 1;
-      return acc;
-    }, {});
-  }
-  Factory("hifi-spectrum", graphHtml, {
-    onMount() {
-      const renderGraph = () => {
-        const graph = this.$(".graph");
-        if (!graph) return;
-        graph.innerHTML = "";
-        const data = getSpectralData(this);
-        for (let [freq, count] of Object.entries(data)) {
-          const bar = document.createElement("graph-bar");
-          bar.setAttribute("freq", freq);
-          bar.setAttribute("count", count.toString());
-          this.$(".graph")?.appendChild(bar);
-        }
-      };
-      const callback = () => {
-        this.querySelectorAll("hi-fi").forEach((hifi) => {
-          hifi.removeEventListener("input", renderGraph);
-        });
-        this.querySelectorAll("hi-fi").forEach((hifi) => {
-          hifi.addEventListener("input", renderGraph);
-        });
-        renderGraph();
-      };
-      const observer = new MutationObserver(callback);
-      observer.observe(this, { childList: true });
-      callback();
-    }
-  });
-})();
+    <div class="bar" style="--ratio : calc({{freq}} /1800);--height : calc(10% * {{count}});" re-render="freq,count">
+      <p class="freq">{{freq}}Hz</p>
+    </div>
+`;c("graph-bar",M,{noShadow:!0,state:{freq:1,count:1},onMount(){this.state.freq=parseInt(this.getAttribute("freq")??"1"),this.state.count=parseInt(this.getAttribute("count")??"1")},onAttributeChange(t,s,n){switch(t){case"freq":case"count":this.state[t]=parseInt(n??"1");break;default:}}});function $(t){return Array.from(t.parentElement?.querySelectorAll("hi-fi")??[]).reduce((n,a)=>{let h=Math.round(444*parseFloat(a.value)),e=h-h%10;return n[e]||(n[e]=0),n[e]+=1,n},{})}c("hifi-spectrum",H,{onMount(){let t=()=>{let a=this.$(".graph");if(!a)return;a.innerHTML="";let h=$(this);for(let[e,i]of Object.entries(h)){let r=document.createElement("graph-bar");r.setAttribute("freq",e),r.setAttribute("count",i.toString()),this.$(".graph")?.appendChild(r)}},s=()=>{this.querySelectorAll("hi-fi").forEach(a=>{a.removeEventListener("input",t)}),this.querySelectorAll("hi-fi").forEach(a=>{a.addEventListener("input",t)}),t()};new MutationObserver(s).observe(this,{childList:!0}),s()}});})();

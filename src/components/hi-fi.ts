@@ -2,11 +2,16 @@ import { Factory } from "../lib/Factory";
 import { BaseComponent } from "../lib/types";
 
 const html = /*html*/ `
-
     <style>
+    :host{
+          --height : 100px;
+          --width : 100px ;
+          --background-color : white;
+          
+    }
     .container{
-        height : var(--height,50px) ;
-        width : var(--width,50px );
+        height : var(--height) ;
+        width : var(--width);
         position : relative;
     }
     .record,.gear,.disk,.modal{
@@ -39,6 +44,10 @@ const html = /*html*/ `
     }
     .modal{
         position : absolute;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color :var(--background-color);
         top: 100%;
         left: 0px;
         border: 1px solid black;
@@ -58,7 +67,7 @@ const html = /*html*/ `
         transform: scale(105%);
     }
     #speed-range,#speed-count{
-        width: 100%;
+        width: 90%;
     } 
     </style>
     <style re-render="playing,speed">
@@ -77,7 +86,7 @@ const html = /*html*/ `
         <audio id="audio" loop=true data-src="{{src}}"></audio>
         <div class="modal" style="display: {{open}};" re-render="open">
             <input id="speed-range" min=".1" step=".1" max="4" re-render="speed" value={{speed}}  type="range">
-            <input id="speed-count" min=".1" step=".1" max="4" re-render="speed" value={{speed}} type="number">
+            <input id="speed-count" onkeyup="if (event.key === 'Enter') { this.click(); }" min=".1" step=".1" max="4" re-render="speed" value={{speed}} type="number">
         </div>
         <div class="close" style="display: {{open}};" re-render="open">X</div>
     <div>
@@ -86,12 +95,12 @@ const html = /*html*/ `
 type StateType = {
   playing: "running" | "paused";
   speed: number;
-  open: "inline" | "none";
+  open: "flex" | "none";
   src: string;
 };
 
-const speedHandle = {
-  event: "input",
+const speedHandle = (event: string) => ({
+  event,
   handler(this: BaseComponent<StateType>, ev: Event) {
     const speed = parseFloat((ev.target as HTMLInputElement).value);
     this.state.speed = speed;
@@ -101,21 +110,20 @@ const speedHandle = {
     audio.playbackRate = this.state.speed;
     audio.play();
   },
-};
+});
 
 const openHandle = (event: string, open: boolean) => ({
   event,
   handler(this: BaseComponent<StateType>, ev: Event) {
-    this.state.open = open ? "inline" : "none";
+    this.state.open = open ? "flex" : "none";
   },
 });
 
 const playHandle = (event: string, play: boolean) => ({
   event,
-  handler(this: BaseComponent<StateType>, ev: Event) {
-    console.log(event)
-    const newState = play ? "running" : "paused"
-    if(this.state.playing == newState)return
+  handler(this: BaseComponent<StateType>) {
+    const newState = play ? "running" : "paused";
+    if (this.state.playing == newState) return;
     this.state.playing = newState;
     const audio = this.$("#audio") as HTMLAudioElement;
     play ? audio.play() : audio.pause();
@@ -157,7 +165,8 @@ Factory<StateType>("hi-fi", html, {
       playHandle("touchstart", false),
       playHandle("touchend", true),
     ],
-    "#speed-range,#speed-count": [speedHandle],
+    "#speed-range": [speedHandle("mouseup")],
+    "#speed-count": [speedHandle("blur"), speedHandle("click")],
     ".close": [
       {
         event: "click",

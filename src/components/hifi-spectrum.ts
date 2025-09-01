@@ -3,8 +3,12 @@ import { Factory } from "../lib/Factory";
 const graphHtml = /*html */ `
 <style>
   main{
+    display: flex;
+    flex-direction: column;
+    height: 100%;
   }
   .slot-container{
+    flex: 1;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -25,17 +29,34 @@ const graphHtml = /*html */ `
 `;
 const barHtml = /*html */ `
     <style>
-      .bar{
+      .bar,.freq{
+        
         position:absolute;
+      }
+    .bar{
         width : 5%;
         --left: calc(100% * var(--ratio));
-        height:var(--height);
         left:var(--left);
+        height:var(--height);
         bottom : 0px;
         background-color: hsl(calc(var(--ratio)*360) , 80% , 50%);
     }
+    .bar:hover > *{
+      display: inline;
+
+    }
+    .freq{
+      display: none;
+      bottom: calc(var(--height));
+      text-align: center;
+      line-height: 12px;
+      width: 100%;
+    }
+
     </style>
-    <div class="bar" style="--ratio : calc({{freq}} /1800);--height : calc(10% * {{count}});" re-render="freq,count"></div>
+    <div class="bar" style="--ratio : calc({{freq}} /1800);--height : calc(10% * {{count}});" re-render="freq,count">
+      <p class="freq">{{freq}}Hz</p>
+    </div>
 `;
 Factory("graph-bar", barHtml, {
   noShadow: true,
@@ -96,11 +117,11 @@ Factory("hifi-spectrum", graphHtml, {
       this.querySelectorAll("hi-fi").forEach((hifi) => {
         hifi.addEventListener("input", renderGraph);
       });
-      renderGraph()
+      renderGraph();
     };
     const observer = new MutationObserver(callback);
     observer.observe(this, { childList: true });
-    
+
     callback();
   },
 });

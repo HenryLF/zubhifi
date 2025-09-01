@@ -2,16 +2,27 @@ import { Factory } from "../lib/Factory";
 
 const html = /*html*/ `
     <style>
-        main{
-            padding : 20px;
-            background-color: aqua;
+        :host{
+          --height : 200px;
+          --width : 100%;
+          flex-basis: 100%;
         }
+        main{
+        height : var(--height);
+        width : var(--width );
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
     </style>
-    <button id="add" aria-roledescription="add hifi">Add</button>
-    <button id="clear" aria-roledescription="add hifi">Clear</button>
-    <div re-render="count">
-        Now {{count}} Hi-Fi.
+    <div>
+      <button id="add" aria-roledescription="add hifi">Add</button>
+      <button id="clear" aria-roledescription="add hifi">Clear</button>
     </div>
+      <p re-render="count">
+        Now {{count}} Hi-Fi.
+      </p>
 `;
 
 Factory("add-button", html, {
@@ -34,7 +45,7 @@ Factory("add-button", html, {
           const hifiComponent = document.createElement("hi-fi");
           hifiComponent.setAttribute("src", "dial.mp3");
           hifiComponent.setAttribute("speed", `${Math.random() * 0.8 + 0.2}`);
-          this.parentElement?.appendChild(hifiComponent.cloneNode(true));
+          this.parentElement?.insertBefore(hifiComponent.cloneNode(true),this);
         },
       },
     ],
