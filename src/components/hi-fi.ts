@@ -165,7 +165,7 @@ Factory<StateType>("hi-fi", html, {
       playHandle("touchstart", false),
       playHandle("touchend", true),
     ],
-    "#speed-range": [speedHandle("mouseup")],
+    "#speed-range": [speedHandle("mouseup"), speedHandle("touchend")],
     "#speed-count": [speedHandle("blur"), speedHandle("click")],
     ".close": [
       {

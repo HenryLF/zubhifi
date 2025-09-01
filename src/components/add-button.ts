@@ -44,7 +44,7 @@ Factory("add-button", html, {
         handler() {
           const hifiComponent = document.createElement("hi-fi");
           hifiComponent.setAttribute("src", "dial.mp3");
-          hifiComponent.setAttribute("speed", `${Math.random() * 0.8 + 0.2}`);
+          hifiComponent.setAttribute("speed", `${Math.floor(Math.random()*10)/10 * 0.8 + 0.2}`);
           this.parentElement?.insertBefore(hifiComponent.cloneNode(true),this);
         },
       },
